@@ -1,0 +1,115 @@
+plugins:
+  - serverless-package-python-functions
+
+provider:
+  name: aws
+  runtime: python3.8
+  stage: dev
+  region: us-east-1
+  logRetentionInDays: 60
+  iamRoleStatements:
+  - Effect: "Allow"
+    Action: 
+      - "ssm:GetParameters"
+      - "kms:Decrypt"
+    Resource: "*"
+
+frameworkVersion: '1'
+app: ses-alerts
+service: ses-alerts
+
+custom:
+  pkgPyFuncs:
+    buildDir: _build
+    requirementsFile: 'requirements.txt'
+    useDocker: true
+    cleanup: true
+  projectName: test
+  accountId: 01234567890
+
+package:
+  individually: true
+
+functions:
+  lambda_function:
+    handler: handler.main
+    name: ${self:provider.stage}_lambda_function
+    package:
+      include:
+        - lambda_function
+      artifact: ${self:custom.pkgPyFuncs.buildDir}/${self:provider.stage}_lambda_function.zip
+    tags:
+      project: ${self:custom.projectName}
+    environment:
+      SLACK_WEBHOOK_URL: ${ssm:/SLACK_WEBHOOK_URL}
+      SLACK_USER: ${ssm:/SLACK_USER}
+      SLACK_CHANNEL: ${ssm:/SLACK_CHANNEL}
+      LOGGER_LEVEL: ${ssm:/LOGGER_LEVEL}
+    events:
+      - schedule:
+          name: ${self:provider.stage}-${self:custom.projectName}-test-event-01
+          description: "For testing 01"
+          rate: cron(0 6 * * ? *)
+          enabled: false
+          input:
+            key: value
+      - schedule:
+          name: ${self:provider.stage}-${self:custom.projectName}-test-event-02
+          description: "For testing 02"
+          rate: cron(0 6 * * ? *)
+          enabled: false
+          input:
+            key: value
+      - schedule:
+          name: ${self:provider.stage}-${self:custom.projectName}-test-event-03
+          description: "For testing 03"
+          rate: cron(0 6 * * ? *)
+          enabled: false
+          input:
+            key: value
+
+resources:
+  Resources:
+    SNSInvokePermission:
+      Type: 'AWS::Lambda::Permission'
+      Properties:
+        FunctionName: arn:aws:lambda:${self:provider.region}:${self:custom.accountId}:function:${self:provider.stage}_lambda_function
+        Action: lambda:InvokeFunction
+        Principal: sns.amazonaws.com
+    SesBounceRate:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmDescription: SES Bounce Rate alerts
+        Namespace: AWS/SES
+        MetricName: Reputation.BounceRate
+        Statistic: Average
+        Threshold: 3
+        ComparisonOperator: GreaterThanThreshold
+        EvaluationPeriods: 1
+        Period: 600
+        AlarmActions:
+          - Ref: TopicCloudwatchAlarm
+    SesComplaintRate:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmDescription: SES Complaint Rate alerts
+        Namespace: AWS/SES
+        MetricName: Reputation.ComplaintRate
+        Statistic: Average
+        Threshold: 0.1
+        ComparisonOperator: GreaterThanThreshold
+        EvaluationPeriods: 1
+        Period: 600
+        AlarmActions:
+          - Ref: TopicCloudwatchAlarm
+    TopicCloudwatchAlarm:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: ${self:service}-${self:provider.stage}-topic-cloudwatch-alarm
+    TopicCloudwatchAlarmSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        Endpoint: arn:aws:lambda:${self:provider.region}:${self:custom.accountId}:function:${self:provider.stage}_lambda_function
+        Protocol: lambda
+        TopicArn:
+          Ref: TopicCloudwatchAlarm
