@@ -26,6 +26,16 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+node_modules
+jspm_packages
+package-json.log
+*.zip
+build.sh
+aws.json
+.DS_Store
+
+# Serverless directories
+.serverless
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
